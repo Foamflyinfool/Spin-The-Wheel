@@ -1,0 +1,411 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Programmable Spin The Wheel</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #wheel-container {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #settings-panel {
+      background-color: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+      margin-bottom: 20px;
+    }
+    #settings-panel h2 {
+      margin-top: 0;
+      font-size: 20px;
+    }
+    .setting {
+      margin: 10px 0;
+    }
+    .setting label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .setting input, .setting button {
+      padding: 8px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      width: calc(100% - 18px);
+    }
+    .setting input[type="color"] {
+      width: 50px;
+      padding: 2px;
+    }
+    .setting button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      width: auto;
+      margin: 5px 0;
+    }
+    .setting button:hover {
+      background-color: #0056b3;
+    }
+    #option-list {
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 5px;
+    }
+    .option-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 5px 0;
+    }
+    .option-item input {
+      flex-grow: 1;
+      margin-right: 10px;
+    }
+    #spin-button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    #spin-button:hover {
+      background-color: #218838;
+    }
+    #spin-button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+      text-align: center;
+    }
+    #congratulation {
+      margin-top: 10px;
+      font-size: 28px;
+      color: #d4a017;
+      font-weight: bold;
+      text-align: center;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+    @media (max-width: 600px) {
+      #settings-panel, #wheel-container {
+        width: 90%;
+      }
+      canvas {
+        width: 100% !important;
+        height: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="wheel-container"></div>
+  <button id="spin-button" onclick="startSpin()">Spin the Wheel</button>
+  <div id="result"></div>
+  <div id="congratulation"></div>
+  <div id="settings-panel">
+    <h2>Wheel Settings</h2>
+    <div class="setting">
+      <label>Spin Duration (seconds, min-max):</label>
+      <input type="number" id="min-spin-time" value="3" min="1" step="0.1">
+      <input type="number" id="max-spin-time" value="5" min="1" step="0.1">
+    </div>
+    <div class="setting">
+      <label>Number of Spins (min-max):</label>
+      <input type="number" id="min-spins" value="5" min="1" step="1">
+      <input type="number" id="max-spins" value="10" min="1" step="1">
+    </div>
+    <div class="setting">
+      <label>Wheel Size (pixels):</label>
+      <input type="number" id="wheel-size" value="400" min="200" max="800" step="10">
+    </div>
+    <div class="setting">
+      <label>Congratulatory Message (use {winner} for winner's name):</label>
+      <input type="text" id="congrats-message" value="Congratulations, {winner}!">
+    </div>
+    <div class="setting">
+      <label>Options:</label>
+      <div id="option-list"></div>
+      <input type="text" id="new-option" placeholder="New option">
+      <button onclick="addOption()">Add Option</button>
+    </div>
+    <div class="setting">
+      <label>Colors:</label>
+      <div id="color-list"></div>
+      <input type="color" id="new-color" value="#FF6B6B">
+      <button onclick="addColor()">Add Color</button>
+    </div>
+  </div>
+  <script>
+    // Define all variables at the top
+    const pointerAngle = Math.PI / 2; // Pointer at right side (90 degrees)
+    let options = ['Alice', 'Bob', 'Charlie'];
+    let colors = ['#FF6B6B', '#4ECDC4', '#45B7D1'];
+    let angle = 0;
+    let spinAngle = 0;
+    let spinning = false;
+    let spinDuration = 0;
+    let spinStartTime = 0;
+    let wheelSize = 400;
+
+    function setup() {
+      let canvas = createCanvas(wheelSize, wheelSize);
+      canvas.parent('wheel-container');
+      textAlign(CENTER, CENTER);
+      textSize(16);
+      updateOptionList();
+      updateColorList();
+    }
+
+    function draw() {
+      background(255);
+      translate(width / 2, height / 2);
+
+      // Draw the spinning wheel
+      push();
+      rotate(angle);
+      let numOptions = options.length;
+      let arcAngle = TWO_PI / numOptions;
+      for (let i = 0; i < numOptions; i++) {
+        fill(colors[i % colors.length]);
+        arc(0, 0, wheelSize, wheelSize, i * arcAngle, (i + 1) * arcAngle);
+        push();
+        rotate(i * arcAngle + arcAngle / 2);
+        fill(0);
+        text(options[i], wheelSize / 4, 0);
+        pop();
+      }
+      pop();
+
+      // Draw the fixed pointer (triangle on right side, pointing inward)
+      push();
+      rotate(pointerAngle);
+      fill(0);
+      stroke(255, 0, 0);
+      strokeWeight(2);
+      triangle(
+        wheelSize / 2 - 10, 0, // Tip of pointer (inward, near wheel edge)
+        wheelSize / 2 + 20, -15, // Bottom left (outside)
+        wheelSize / 2 + 20, 15  // Bottom right (outside)
+      );
+      noStroke();
+      pop();
+
+      if (spinning) {
+        let elapsed = millis() - spinStartTime;
+        let progress = elapsed / spinDuration;
+        if (progress >= 1) {
+          spinning = false;
+          showResult();
+          document.getElementById('spin-button').disabled = false;
+        } else {
+          let easedProgress = 1 - Math.pow(1 - progress, 3);
+          angle = spinAngle * easedProgress;
+        }
+      }
+    }
+
+    function windowResized() {
+      let newSize = parseInt(document.getElementById('wheel-size').value);
+      if (newSize !== wheelSize) {
+        wheelSize = newSize;
+        resizeCanvas(wheelSize, wheelSize);
+      }
+    }
+
+    function addOption() {
+      let newOption = document.getElementById('new-option').value.trim();
+      if (newOption) {
+        options.push(newOption);
+        document.getElementById('new-option').value = '';
+        updateOptionList();
+      }
+    }
+
+    function removeOption(index) {
+      options.splice(index, 1);
+      updateOptionList();
+    }
+
+    function updateOption(index, value) {
+      options[index] = value;
+      updateOptionList();
+    }
+
+    function updateOptionList() {
+      let optionList = document.getElementById('option-list');
+      optionList.innerHTML = '';
+      options.forEach((opt, i) => {
+        let div = document.createElement('div');
+        div.className = 'option-item';
+        let input = document.createElement('input');
+        input.type = 'text';
+        input.value = opt;
+        input.onchange = () => updateOption(i, input.value);
+        let removeBtn = document.createElement('button');
+        removeBtn.innerText = 'Remove';
+        removeBtn.onclick = () => removeOption(i);
+        div.appendChild(input);
+        div.appendChild(removeBtn);
+        optionList.appendChild(div);
+      });
+    }
+
+    function addColor() {
+      let newColor = document.getElementById('new-color').value;
+      colors.push(newColor);
+      updateColorList();
+    }
+
+    function removeColor(index) {
+      colors.splice(index, 1);
+      updateColorList();
+    }
+
+    function updateColorList() {
+      let colorList = document.getElementById('color-list');
+      colorList.innerHTML = '';
+      colors.forEach((color, i) => {
+        let div = document.createElement('div');
+        div.className = 'option-item';
+        let input = document.createElement('input');
+        input.type = 'color';
+        input.value = color;
+        input.onchange = () => {
+          colors[i] = input.value;
+          updateColorList();
+        };
+        let removeBtn = document.createElement('button');
+        removeBtn.innerText = 'Remove';
+        removeBtn.onclick = () => removeColor(i);
+        div.appendChild(input);
+        div.appendChild(removeBtn);
+        colorList.appendChild(div);
+      });
+    }
+
+    function startSpin() {
+      if (options.length < 2) {
+        document.getElementById('result').innerText = 'Please enter at least 2 options.';
+        document.getElementById('congratulation').innerText = '';
+        return;
+      }
+      document.getElementById('spin-button').disabled = true;
+      document.getElementById('result').innerText = '';
+      document.getElementById('congratulation').innerText = '';
+      spinning = true;
+      spinStartTime = millis();
+
+      let minSpinTime = parseFloat(document.getElementById('min-spin-time').value) * 1000;
+      let maxSpinTime = parseFloat(document.getElementById('max-spin-time').value) * 1000;
+      let minSpins = parseInt(document.getElementById('min-spins').value);
+      let maxSpins = parseInt(document.getElementById('max-spins').value);
+
+      spinDuration = random(minSpinTime, maxSpinTime);
+      let spins = random(minSpins, maxSpins);
+      let numOptions = options.length;
+      let arcAngle = TWO_PI / numOptions;
+      let randomOption = floor(random(numOptions));
+      // Calculate spinAngle so winner's segment center is under pointer's tip (π/2)
+      let winnerAngle = (randomOption * arcAngle + arcAngle / 2); // Center of winner's segment
+      spinAngle = (TWO_PI * spins) - (winnerAngle - pointerAngle);
+      console.log(`Winner index: ${randomOption}, Winner angle: ${winnerAngle}, Spin angle: ${spinAngle}`);
+    }
+
+    function showResult() {
+      let numOptions = options.length;
+      let arcAngle = TWO_PI / numOptions;
+      let finalAngle = angle % TWO_PI;
+      if (finalAngle < 0) finalAngle += TWO_PI;
+      // Calculate winner based on pointer at π/2
+      let normalizedAngle = (pointerAngle - finalAngle) % TWO_PI;
+      if (normalizedAngle < 0) normalizedAngle += TWO_PI;
+      let selectedIndex = floor(normalizedAngle / arcAngle) % numOptions;
+      let winner = options[selectedIndex];
+      document.getElementById('result').innerText = `Winner: ${winner}`;
+      
+      let congratsTemplate = document.getElementById('congrats-message').value;
+      let congratsMessage = congratsTemplate.replace('{winner}', winner);
+      document.getElementById('congratulation').innerText = congratsMessage;
+
+      // Trigger confetti animation
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+
+      console.log(`Final angle: ${finalAngle}, Normalized angle: ${normalizedAngle}, Selected index: ${selectedIndex}, Winner: ${winner}`);
+    }
+  </script>
+</body>
+</html>
